@@ -1,0 +1,189 @@
+/* Wrapper */
+.wrapper {
+    display: flex;
+    width: 100%;
+    align-items: stretch;
+    background-color: #f8f9fa;
+}
+
+/* Sidebar */
+#sidebar {
+    min-width: 250px;
+    max-width: 250px;
+    min-height: 100vh;
+    transition: all 0.3s;
+}
+
+#sidebar.active {
+    margin-left: -250px;
+}
+
+#sidebar .sidebar-header {
+    padding: 20px;
+    background: #343a40;
+}
+
+#sidebar ul.components {
+    padding: 20px 0;
+}
+
+#sidebar ul li a {
+    padding: 10px 20px;
+    font-size: 1.1em;
+    display: block;
+    color: #fff;
+    text-decoration: none;
+}
+
+#sidebar ul li a:hover {
+    background: #495057;
+}
+
+#sidebar ul li.active > a {
+    background: #0d6efd;
+}
+
+/* Content */
+#content {
+    width: 100%;
+    padding: 20px;
+    min-height: 100vh;
+    transition: all 0.3s;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #eee;
+    padding: 1.25rem;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.card-title {
+    color: #495057;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.card-text.display-4 {
+    color: #0d6efd;
+    font-weight: 600;
+    font-size: 2.5rem;
+    margin-bottom: 0;
+}
+
+/* Quick Stats Cards */
+.col-md-3 .card {
+    text-align: center;
+    background: linear-gradient(to bottom right, #ffffff, #f8f9fa);
+}
+
+.col-md-3 .card-body {
+    padding: 1.5rem;
+}
+
+.col-md-3 .card-title {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c757d;
+}
+
+/* Recent Activity Card */
+.list-unstyled li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.list-unstyled li:last-child {
+    border-bottom: none;
+}
+
+/* Quick Actions Card */
+.d-grid.gap-2 .btn {
+    padding: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Navbar */
+.navbar {
+    padding: 1rem;
+    background: #fff !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.btn-info {
+    color: #fff;
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+}
+
+.btn-info:hover {
+    color: #fff;
+    background-color: #31d2f2;
+    border-color: #25cff2;
+}
+
+/* Welcome Message */
+.nav-link {
+    color: #495057 !important;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #sidebar {
+        margin-left: -250px;
+    }
+    #sidebar.active {
+        margin-left: 0;
+    }
+    .card-text.display-4 {
+        font-size: 2rem;
+    }
+}
+
+/* Login Page */
+.login-page {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+}
+
+.login-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.login-card .card-header {
+    background: #fff;
+    border-bottom: none;
+    padding: 2rem 1rem;
+}
+
+.login-card .card-body {
+    padding: 2rem;
+}
+
+.login-card h4 {
+    color: #495057;
+    font-weight: 600;
+} 

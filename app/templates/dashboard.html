@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Action Dropdown -->
+    <div class="input-group mb-3">
+        <button class="btn btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="true" id="actionButton" style="width: 20%;">
+            All
+        </button>
+        <ul class="dropdown-menu" id="actionDropdown">
+            <li><a class="dropdown-item active" href="#" data-value="all">All</a></li>
+            <li><a class="dropdown-item" href="#" data-value="implement">Implement</a></li>
+        </ul>
+        <!-- Implement ID Input Field -->
+        <input type="text" class="form-control" aria-label="Implement ID" id="implementInput" disabled placeholder="">
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row">
+    <div class="col-xl-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0" id="machineStatusTitle">Machine Status ( ALL )</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container position-relative">
+                    <canvas id="machineStatusChart" style="height: 300px;"></canvas>
+                    <div id="totalMachinesText" class="center-text"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0" id="totalAreaTitle">Total Area ( ALL )</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="areaChart" style="height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.chart-container {
+    position: relative;
+    height: 300px;
+}
+.center-text {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 25px;
+    font-weight: bold;
+    color: black;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+Chart.register(ChartDataLabels);
+
+document.addEventListener('DOMContentLoaded', function () {
+    var actionButton = document.getElementById("actionButton");
+    var implementInput = document.getElementById("implementInput");
+
+    var ctxMachine = document.getElementById("machineStatusChart").getContext("2d");
+    var ctxArea = document.getElementById("areaChart").getContext("2d");
+
+    var machineStatusTitle = document.getElementById("machineStatusTitle");
+    var totalAreaTitle = document.getElementById("totalAreaTitle");
+
+    // Fetch initial data from Flask
+    var machineStates = {{ machine_states|tojson }};
+    var totalMachines = {{ counts.machines|default(0) }};
+    var totalArea = {{ total_area|default(0) }};
+    var totalCultivated = {{ total_cultivated|default(0) }};
+
+    // Display total machine count
+    document.getElementById("totalMachinesText").innerText = totalMachines;
+
+    // Initialize Machine Status Chart
+    var machineStatusChart = new Chart(ctxMachine, {
+        type: "doughnut",
+        data: {
+            labels: ["Running", "Stopped", "Idle"],
+            datasets: [{
+                data: [
+                    machineStates.running || 0,
+                    machineStates.stop || 0,
+                    machineStates.idle || 0
+                ],
+                backgroundColor: ["#2E7D32", "#D32F2F", "#FFA000"],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "40%",
+            plugins: {
+                legend: { position: "bottom" },
+                datalabels: {
+                    display: true,
+                    color: "#fff",
+                    font: { weight: "bold", size: 18 },
+                    formatter: function(value) { return value > 0 ? value : ""; }
+                }
+            }
+        }
+    });
+
+    // Initialize Area Chart
+    var upperLimit = totalArea > 0 ? totalArea + (totalArea * 0.1) : 100;
+    var areaChart = new Chart(ctxArea, {
+        type: "bar",
+        data: {
+            labels: ["Total Area", "Area Cultivated"],
+            datasets: [{
+                label: "Hectares",
+                data: [totalArea, totalCultivated],
+                backgroundColor: ["#007bff", "#28a745"],
+                borderColor: ["#0056b3", "#1e7e34"],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: upperLimit,
+                    ticks: { stepSize: Math.ceil(upperLimit / 10) }
+                }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    // Dropdown Selection Logic
+    document.getElementById("actionDropdown").addEventListener("click", function (event) {
+        if (event.target.classList.contains("dropdown-item")) {
+            var selectedValue = event.target.getAttribute("data-value");
+
+            actionButton.innerText = event.target.innerText;
+            document.querySelectorAll(".dropdown-item").forEach(item => item.classList.remove("active"));
+            event.target.classList.add("active");
+
+            // Enable/disable Implement ID input
+            implementInput.disabled = selectedValue !== "implement";
+            if (implementInput.disabled) {
+                implementInput.value = "";
+                updateChart(machineStates, totalMachines);
+                updateAreaChart(totalArea, totalCultivated);
+                
+                // ✅ Reset titles when switching to "All"
+                machineStatusTitle.innerText = "Machine Status (ALL)";
+                totalAreaTitle.innerText = "Total Area (ALL)";
+            }
+        }
+    });
+
+
+    // Fetch new data on Implement ID input
+    implementInput.addEventListener("input", function () {
+        var implementId = implementInput.value.trim();
+        if (implementId) {
+            fetchChartData(implementId);
+        }
+    });
+
+    function fetchChartData(implementId) {
+        fetch("/get_chart_data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ implement_id: implementId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateChart(data.machine_states, data.total_machines);
+            updateAreaChart(data.total_area, data.cultivated_area);
+            machineStatusTitle.innerText = `Machine Status (Implement ID: ${implementId})`;
+            totalAreaTitle.innerText = `Total Area (Implement ID: ${implementId})`;
+        })
+        .catch(error => console.error("Error fetching data:", error));
+    }
+
+    function updateChart(newData, totalMachines) {
+        // Update Machine Status Chart Data
+        machineStatusChart.data.datasets[0].data = [
+            newData.running || 0,
+            newData.stop || 0,
+            newData.idle || 0
+        ];
+
+        // Update total machines count
+        document.getElementById("totalMachinesText").innerText = totalMachines;
+
+        // Refresh Machine Status Chart
+        machineStatusChart.update();
+    }
+
+    function updateAreaChart(newTotalArea, newCultivatedArea) {
+        // Update Area Chart Data
+        areaChart.data.datasets[0].data = [newTotalArea, newCultivatedArea];
+
+        // Recalculate upper limit for the Y-axis
+        var upperLimit = newTotalArea > 0 ? newTotalArea + (newTotalArea * 0.1) : 100;
+        areaChart.options.scales.y.max = upperLimit;
+
+        // Refresh Area Chart
+        areaChart.update();
+    }
+});
+</script>
+{% endblock %}
