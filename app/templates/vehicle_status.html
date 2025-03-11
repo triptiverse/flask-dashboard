@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicle Status{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-white py-3">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-truck me-2 text-primary"></i>
+                    Vehicle Status Overview
+                </h5>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Search vehicles...">
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr class="bg-light">
+                        <th class="px-4">Vehicle ID</th>
+                        <th>Status</th>
+                        <th>IGN</th>
+                        <th>Power</th>
+                        <th>Last Updated</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vehicle in vehicles %}
+                    <tr>
+                        <td class="px-4">{{ vehicle.vehicle_name }}</td>
+                        <td>
+                            <span class="badge bg-{{ vehicle.status_color }} bg-opacity-75">
+                                {{ vehicle.status }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ vehicle.ign_color }} bg-opacity-75">
+                                {{ vehicle.ign_status }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ vehicle.power_color }} bg-opacity-75">
+                                {{ vehicle.power_status }}
+                            </span>
+                        </td>
+                        <td>{{ vehicle.last_updated }}</td>
+                        <td class="text-center">
+                            <div class="btn-group" role="group">
+                                <button onclick="viewDetails('{{ vehicle.vehicle_name }}')" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-info-circle"></i> Details
+                                </button>
+                                <button onclick="viewHistory('{{ vehicle.vehicle_name }}')" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-history"></i> History
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Vehicle Details Modal -->
+<div class="modal fade" id="vehicleDetailsModal" tabindex="-1" aria-labelledby="vehicleDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="vehicleDetailsModalLabel">
+                    <i class="fas fa-truck me-2"></i>Vehicle Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div id="vehicleInfo">
+                            <!-- Vehicle info will be populated here -->
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div id="vehicleMap" style="height: 400px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<!-- Add Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    .modal {
+        z-index: 1050;
+    }
+    .modal-backdrop {
+        z-index: 1040;
+    }
+    .modal-open {
+        overflow: auto !important;
+        padding-right: 0 !important;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Add Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentModal = null;
+
+    window.viewDetails = function(vehicleId) {
+        console.log('Opening details for vehicle:', vehicleId);
+        
+        // Initialize new modal
+        const modalElement = document.getElementById('vehicleDetailsModal');
+        currentModal = new bootstrap.Modal(modalElement);
+        
+        // Show loading state
+        document.getElementById('vehicleInfo').innerHTML = `
+            <div class="text-center p-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading vehicle details...</p>
+            </div>
+        `;
+        
+        // Show the modal
+        currentModal.show();
+        
+        // Fetch vehicle details
+        fetch(`/api/vehicle/${vehicleId}/location`)
+            .then(response => response.json())
+            .then(data => {
+                console.log('Received data:', data);
+                
+                // Update vehicle info
+                document.getElementById('vehicleInfo').innerHTML = `
+                    <div class="p-3">
+                        <h6 class="mb-3">Vehicle Information</h6>
+                        <p><strong>ID:</strong> ${data.vehicle_id}</p>
+                        <p><strong>Status:</strong> <span class="badge bg-${data.status_color}">${data.status}</span></p>
+                        <p><strong>IGN Status:</strong> ${data.ign_status}</p>
+                        <p><strong>Power Status:</strong> ${data.power_status}</p>
+                        <p><strong>Last Updated:</strong> ${data.last_updated}</p>
+                        <p><strong>Location:</strong> ${data.latitude}, ${data.longitude}</p>
+                    </div>
+                `;
+                
+                // Initialize map
+                const mapDiv = document.getElementById('vehicleMap');
+                if (mapDiv._leaflet_id) {
+                    mapDiv._leaflet_map.remove();
+                }
+                
+                const map = L.map('vehicleMap').setView([data.latitude, data.longitude], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                
+                const marker = L.marker([data.latitude, data.longitude]).addTo(map);
+                marker.bindPopup(`
+                    <b>${data.vehicle_id}</b><br>
+                    Status: ${data.status}<br>
+                    Last Updated: ${data.last_updated}
+                `).openPopup();
+                
+                map.invalidateSize();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('vehicleInfo').innerHTML = `
+                    <div class="alert alert-danger m-3">
+                        <h6>Error Loading Details</h6>
+                        <p>Could not load vehicle details. Please try again.</p>
+                    </div>
+                `;
+            });
+    };
+
+    window.viewHistory = function(vehicleId) {
+        console.log('View history for:', vehicleId);
+    };
+});
+</script>
+{% endblock %}

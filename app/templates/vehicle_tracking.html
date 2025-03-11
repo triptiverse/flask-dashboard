@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicle Tracking{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Vehicle Location Map</h5>
+            </div>
+            <div class="card-body">
+                <div id="map" style="height: 600px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map {
+        width: 100%;
+        height: 600px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+    }
+
+    .vehicle-popup {
+        font-size: 14px;
+        padding: 5px;
+    }
+
+    .vehicle-popup strong {
+        color: #2E7D32;
+    }
+
+    .refresh-btn:hover {
+        background-color: #f4f4f4 !important;
+    }
+
+    .vehicle-marker {
+        transition: transform 0.3s ease;
+    }
+
+    .vehicle-marker:hover {
+        transform: scale(1.2);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize the map (centered on Bihar)
+    var map = L.map('map').setView([25.0961, 85.3131], 8);
+    var updateInterval = 10000; // 10 seconds
+    var updateTimer = null;
+
+    // Define custom tractor icon
+    var tractorIcon = L.icon({
+        iconUrl: "{{ url_for('static', filename='assets/images/tractor.png') }}",
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16],
+        className: 'vehicle-marker'
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Store markers in a group
+    var markersGroup = L.featureGroup().addTo(map);
+
+    function updateVehicleLocations() {
+        // Cancel any pending update
+        if (updateTimer) {
+            clearTimeout(updateTimer);
+        }
+
+        fetch('/get-vehicle-locations')
+            .then(response => response.json())
+            .then(vehicles => {
+                // Clear existing markers
+                markersGroup.clearLayers();
+
+                // Add new markers
+                vehicles.forEach(vehicle => {
+                    const lat = parseFloat(vehicle.latitude);
+                    const lng = parseFloat(vehicle.longitude);
+                    
+                    const marker = L.marker([lat, lng], {
+                        icon: tractorIcon
+                    }).bindPopup(`
+                        <div class="vehicle-popup">
+                            <strong>${vehicle.vehicle_name}</strong><br>
+                            Lat: ${lat.toFixed(6)}<br>
+                            Long: ${lng.toFixed(6)}
+                        </div>
+                    `);
+                    
+                    markersGroup.addLayer(marker);
+                });
+
+                // Fit map to show all markers
+                if (vehicles.length > 0) {
+                    map.fitBounds(markersGroup.getBounds(), {padding: [50, 50]});
+                }
+
+                // Schedule next update
+                updateTimer = setTimeout(updateVehicleLocations, updateInterval);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Retry after error
+                updateTimer = setTimeout(updateVehicleLocations, updateInterval);
+            });
+    }
+
+    // Add refresh button
+    var refreshButton = L.control({position: 'topright'});
+    refreshButton.onAdd = function(map) {
+        var btn = L.DomUtil.create('button', 'refresh-btn');
+        btn.innerHTML = '🔄 Refresh';
+        btn.style.padding = '8px 15px';
+        btn.style.backgroundColor = '#fff';
+        btn.style.border = '2px solid rgba(0,0,0,0.2)';
+        btn.style.borderRadius = '4px';
+        btn.style.cursor = 'pointer';
+        
+        btn.onclick = function() {
+            btn.innerHTML = '⌛ Updating...';
+            btn.disabled = true;
+            updateVehicleLocations();
+            setTimeout(() => {
+                btn.innerHTML = '🔄 Refresh';
+                btn.disabled = false;
+            }, 1000);
+        }
+        return btn;
+    };
+    refreshButton.addTo(map);
+
+    // Initial update
+    updateVehicleLocations();
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (updateTimer) {
+            clearTimeout(updateTimer);
+        }
+    });
+});
+</script>
+{% endblock %}

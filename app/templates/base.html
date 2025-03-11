@@ -368,6 +368,7 @@
         }
     </style>
     {% block extra_css %}{% endblock %}
+    {% block styles %}{% endblock %}
 </head>
 <body>
     <div class="wrapper">
@@ -380,9 +381,21 @@
 
             <ul class="list-unstyled components">
                 <li>
-                    <a href="{{ url_for('main.dashboard') }}" class="active">
+                    <a href="{{ url_for('main.dashboard') }}" class="{{ 'active' if request.endpoint == 'main.dashboard' else '' }}">
                         <i class="fas fa-desktop"></i>
                         Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.vehicle_tracking') }}" class="{{ 'active' if request.endpoint == 'main.vehicle_tracking' else '' }}">
+                        <i class="fas fa-truck"></i>
+                        Vehicle Tracking
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.vehicle_status') }}" class="{{ 'active' if request.endpoint == 'main.vehicle_status' else '' }}">
+                        <i class="fas fa-info-circle"></i>
+                        Vehicle Status
                     </a>
                 </li>
             </ul>
