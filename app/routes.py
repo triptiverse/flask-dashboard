@@ -197,7 +197,8 @@ def vehicle_location(vehicle_id):
                 'power_status': latest_doc.get("Power", "Unknown"),
                 'last_updated': latest_doc.get("GPSActualTime", "N/A"),
                 'latitude': latest_doc.get("Latitude", 0),
-                'longitude': latest_doc.get("Longitude", 0)
+                'longitude': latest_doc.get("Longitude", 0),
+                'Location': latest_doc.get("Location", "N/A")
             })
         
         print(f"Vehicle not found: {vehicle_id}")
