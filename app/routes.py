@@ -5,6 +5,9 @@ from flask_pymongo import PyMongo
 from app import mongo  # This imports the mongo instance from your app package
 from time import time
 from functools import wraps
+from werkzeug.security import generate_password_hash
+from pymongo import MongoClient
+from app.utils import counts  # Import counts if needed
 
 bp = Blueprint('main', __name__)
 
@@ -14,19 +17,6 @@ dummy_data = {
     "102": {"running": 3, "stop": 4, "idle": 1, "total_machines": 8, "cultivated_area": 13000, "total_area" : 15000},
     "103": {"running": 6, "stop": 1, "idle": 2, "total_machines": 9, "cultivated_area": 14000, "total_area" : 20000}
 }
-# Default mock data
-N_machines = 19
-N_implement = 10
-N_cluster = 7
-N_plot = 50
-
-counts = {
-    'machines': N_machines,
-    'implements': N_implement,
-    'clusters': N_cluster,
-    'plots': N_plot
-}
-
 # Cache storage
 last_update_time = 0
 cached_locations = None
@@ -68,7 +58,6 @@ def dashboard():
     total_cultivated = sum([data["cultivated_area"] for data in dummy_data.values()])
 
     return render_template('dashboard.html', 
-                           counts=counts,
                            machine_states=machine_states,
                            total_area=total_area,
                            total_cultivated=total_cultivated)
@@ -96,7 +85,7 @@ def get_chart_data():
 @bp.route('/vehicle-tracking')
 @login_required
 def vehicle_tracking():
-    return render_template("vehicle_tracking.html", counts=counts)
+    return render_template("vehicle_tracking.html")
 
 @bp.route('/get-vehicle-locations')
 @with_cache
@@ -163,9 +152,7 @@ def vehicle_status():
                 "longitude": latest_doc.get("Longitude", "N/A")
             })
 
-    return render_template('vehicle_status.html', 
-                         vehicles=vehicles,
-                         counts=counts)
+    return render_template('vehicle_status.html', vehicles=vehicles)
 
 @bp.route('/api/vehicle/<vehicle_id>/location')
 def vehicle_location(vehicle_id):
@@ -209,5 +196,58 @@ def vehicle_location(vehicle_id):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/manage-users')
+@login_required
+def manage_users():
+    # Fetch all users from the database
+    users = mongo.db.users.find()  # Assuming 'users' is your collection name
 
+    # Convert the cursor to a list of dictionaries
+    user_list = list(users)
+
+    return render_template('manage_users.html', users=user_list)
+
+@bp.route('/add_user', methods=['POST'])
+def add_user():
+    data = request.get_json()
+    user_id = data.get('userId')
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role')
+
+    # Check if a user with the same userId already exists
+    existing_user = mongo.db.users.find_one({'userId': user_id})
+    if existing_user:
+        return jsonify({'success': False, 'error': 'User ID already exists'}), 400
+
+    # Create a new user document
+    new_user = {
+        'userId': user_id,
+        'username': username,
+        'password': generate_password_hash(password),  # Consider hashing the password before storing
+        'role': role
+    }
+
+    try:
+        mongo.db.users.insert_one(new_user)
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/delete_user', methods=['POST'])
+@login_required
+def delete_user():
+    data = request.get_json()
+    userid = data.get('userid')
+
+    try:
+        # Delete the user from the database
+        result = mongo.db.users.delete_one({'userid': userid})
+        
+        if result.deleted_count == 0:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 

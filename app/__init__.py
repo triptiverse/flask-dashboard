@@ -3,6 +3,7 @@ from flask_pymongo import PyMongo
 from flask_login import LoginManager
 from .config import Config
 from bson.objectid import ObjectId
+from app.utils import counts  # Import counts from utils
 
 # Initialize MongoDB and LoginManager
 mongo = PyMongo()
@@ -38,5 +39,10 @@ def create_app():
         from .models import User
         user_data = mongo.db.users.find_one({'_id': ObjectId(user_id)})
         return User(user_data) if user_data else None
+
+    # Context processor to inject counts into all templates
+    @app.context_processor
+    def inject_counts():
+        return dict(counts=counts)
 
     return app 

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from app import mongo
@@ -14,6 +14,7 @@ def create_test_user():
     
     # Create new user
     test_user = {
+        'userId': 'admin',
         'username': 'admin',
         'password': generate_password_hash('admin123'),
         'role': 'admin'
@@ -21,7 +22,7 @@ def create_test_user():
     
     # Insert into MongoDB
     mongo.db.users.insert_one(test_user)
-    return 'Test user created successfully! Username: admin, Password: admin123'
+    return 'Test user created successfully! UserID: admin, Password: admin123'
 
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
@@ -30,17 +31,17 @@ def login():
         return redirect(url_for('main.dashboard'))
     
     if request.method == 'POST':
-        username = request.form.get('username')
+        userID = request.form.get('userID')
         password = request.form.get('password')
-        
-        user = mongo.db.users.find_one({'username': username})
-        
+        print(userID, password)
+        user = mongo.db.users.find_one({'userId': userID})
+        print(f"user = {user}")
         if user and check_password_hash(user['password'], password):
             user_obj = User(user)
             login_user(user_obj)
             return redirect(url_for('main.dashboard'))
         else:
-            flash('Invalid username or password')
+            flash('Invalid user ID or password')
             return redirect(url_for('auth.login'))
     
     # GET request - show login form
@@ -49,6 +50,12 @@ def login():
 @auth.route('/logout')
 @login_required
 def logout():
+    # Log the user out
     logout_user()
+    
+    # Clear the session data
+    session.clear()
+    
+    # Redirect to the login page or home page
     return redirect(url_for('auth.login'))
 
