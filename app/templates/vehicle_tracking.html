@@ -3,14 +3,19 @@
 {% block title %}Vehicle Tracking{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Vehicle Location Map</h5>
-            </div>
-            <div class="card-body">
-                <div id="map" style="height: 600px;"></div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Vehicle Location Map</h5>
+                    <button class="btn btn-success" id="refreshButton">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div id="map"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -18,34 +23,33 @@
 {% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
     #map {
+        height: 75vh;
         width: 100%;
-        height: 600px;
-        border-radius: 8px;
-        border: 1px solid #ddd;
     }
-
+    .vehicle-name {
+        color: white;
+        text-shadow: 2px 2px 2px black;
+        font-weight: bold;
+        font-size: 14px;
+    }
     .vehicle-popup {
         font-size: 14px;
         padding: 5px;
     }
-
-    .vehicle-popup strong {
+    .vehicle-popup h5 {
         color: #2E7D32;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 5px;
     }
-
-    .refresh-btn:hover {
-        background-color: #f4f4f4 !important;
+    .vehicle-popup .badge {
+        margin-left: 5px;
     }
-
-    .vehicle-marker {
-        transition: transform 0.3s ease;
-    }
-
-    .vehicle-marker:hover {
-        transform: scale(1.2);
+    .leaflet-popup-content {
+        margin: 10px;
     }
 </style>
 {% endblock %}
@@ -54,106 +58,126 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the map (centered on Bihar)
-    var map = L.map('map').setView([25.0961, 85.3131], 8);
-    var updateInterval = 10000; // 10 seconds
-    var updateTimer = null;
-
-    // Define custom tractor icon
-    var tractorIcon = L.icon({
-        iconUrl: "{{ url_for('static', filename='assets/images/tractor.png') }}",
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16],
-        className: 'vehicle-marker'
+    // Initialize map
+    const map = L.map('map', {
+        center: [25.0961, 85.3131],
+        zoom: 8
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Create panes with different z-indices
+    map.createPane('satellite');
+    map.createPane('labels');
+    map.getPane('satellite').style.zIndex = 200;
+    map.getPane('labels').style.zIndex = 650;
+
+    // Add Esri Satellite layer
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        pane: 'satellite',
         maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+        attribution: 'Imagery &copy; Esri'
     }).addTo(map);
 
-    // Store markers in a group
-    var markersGroup = L.featureGroup().addTo(map);
+    // Add OpenStreetMap labels
+    const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+        pane: 'labels',
+        maxZoom: 19,
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
+    // Function to create custom icon
+    function createVehicleIcon(vehicleName, vehicleStatus) {
+        const statusImage = vehicleStatus ? vehicleStatus.toLowerCase() : 'tractor';
+        return L.divIcon({
+            html: `
+                <div>
+                    <img src="{{ url_for('static', filename='assets/images/') }}${statusImage}.png" 
+                         style="width: 32px; height: 32px;">
+                    <div class="vehicle-name" style="text-align: center; width: 200px; margin-left: -84px;">
+                        ${vehicleName}
+                    </div>
+                </div>`,
+            className: 'vehicle-marker',
+            iconSize: [100, 100],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
+        });
+    }
+
+    // Function to update vehicle locations
     function updateVehicleLocations() {
-        // Cancel any pending update
-        if (updateTimer) {
-            clearTimeout(updateTimer);
-        }
-
         fetch('/get-vehicle-locations')
             .then(response => response.json())
             .then(vehicles => {
                 // Clear existing markers
-                markersGroup.clearLayers();
+                map.eachLayer((layer) => {
+                    if (layer instanceof L.Marker) {
+                        map.removeLayer(layer);
+                    }
+                });
 
                 // Add new markers
+                const bounds = [];
                 vehicles.forEach(vehicle => {
-                    const lat = parseFloat(vehicle.latitude);
-                    const lng = parseFloat(vehicle.longitude);
-                    
-                    const marker = L.marker([lat, lng], {
-                        icon: tractorIcon
-                    }).bindPopup(`
+                    const position = [vehicle.latitude, vehicle.longitude];
+                    bounds.push(position);
+
+                    L.marker(position, {
+                        icon: createVehicleIcon(vehicle.vehicle_name, vehicle.status)
+                    })
+                    .bindPopup(`
                         <div class="vehicle-popup">
-                            <strong>${vehicle.vehicle_name}</strong><br>
-                            Lat: ${lat.toFixed(6)}<br>
-                            Long: ${lng.toFixed(6)}
+                            <h5 class="mb-2">${vehicle.vehicle_name}</h5>
+                            <div class="mb-2">
+                                <strong>Status:</strong> 
+                                <span class="badge bg-${vehicle.status_color}">${vehicle.status}</span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>IGN Status:</strong> 
+                                <span class="badge bg-${vehicle.ign_status === 'ON' ? 'success' : 'danger'}">${vehicle.ign_status}</span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Power Status:</strong> 
+                                <span class="badge bg-${vehicle.power_status === 'ON' ? 'success' : 'danger'}">${vehicle.power_status}</span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Last Updated:</strong><br>
+                                ${vehicle.last_updated}
+                            </div>
+                            <div>
+                                <strong>Location:</strong><br>
+                                ${vehicle.location}
+                            </div>
                         </div>
-                    `);
-                    
-                    markersGroup.addLayer(marker);
+                    `, {
+                        maxWidth: 300
+                    })
+                    .addTo(map);
                 });
 
                 // Fit map to show all markers
-                if (vehicles.length > 0) {
-                    map.fitBounds(markersGroup.getBounds(), {padding: [50, 50]});
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds);
                 }
-
-                // Schedule next update
-                updateTimer = setTimeout(updateVehicleLocations, updateInterval);
             })
-            .catch(error => {
-                console.error('Error:', error);
-                // Retry after error
-                updateTimer = setTimeout(updateVehicleLocations, updateInterval);
-            });
+            .catch(error => console.error('Error:', error));
     }
-
-    // Add refresh button
-    var refreshButton = L.control({position: 'topright'});
-    refreshButton.onAdd = function(map) {
-        var btn = L.DomUtil.create('button', 'refresh-btn');
-        btn.innerHTML = '🔄 Refresh';
-        btn.style.padding = '8px 15px';
-        btn.style.backgroundColor = '#fff';
-        btn.style.border = '2px solid rgba(0,0,0,0.2)';
-        btn.style.borderRadius = '4px';
-        btn.style.cursor = 'pointer';
-        
-        btn.onclick = function() {
-            btn.innerHTML = '⌛ Updating...';
-            btn.disabled = true;
-            updateVehicleLocations();
-            setTimeout(() => {
-                btn.innerHTML = '🔄 Refresh';
-                btn.disabled = false;
-            }, 1000);
-        }
-        return btn;
-    };
-    refreshButton.addTo(map);
 
     // Initial update
     updateVehicleLocations();
 
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', function() {
-        if (updateTimer) {
-            clearTimeout(updateTimer);
-        }
+    // Refresh button handler
+    document.getElementById('refreshButton').addEventListener('click', function() {
+        this.disabled = true;
+        updateVehicleLocations();
+        setTimeout(() => this.disabled = false, 2000);
     });
+
+    // Auto-refresh every 30 seconds
+    const refreshInterval = setInterval(updateVehicleLocations, 30000);
+
+    // Cleanup
+    window.addEventListener('beforeunload', () => clearInterval(refreshInterval));
 });
 </script>
 {% endblock %}

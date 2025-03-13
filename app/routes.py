@@ -90,28 +90,40 @@ def vehicle_tracking():
 @bp.route('/get-vehicle-locations')
 @with_cache
 def get_vehicle_locations():
-    # Get all collections from vehicleDBdemo
     collections = mongo.db.list_collection_names()
     vehicle_locations = []
 
     for collection_name in collections:
-        # Get the latest document from each collection
         latest_doc = mongo.db[collection_name].find_one(
             sort=[("_id", -1)]
         )
         
         if latest_doc and "Latitude" in latest_doc and "Longitude" in latest_doc:
+            status = latest_doc.get("Status", "Unknown")
+            status_color = {
+                "RUNNING": "success",   
+                "STOP": "danger",
+                "INACTIVE": "warning"
+            }.get(status, "secondary")
+
             vehicle_locations.append({
                 "vehicle_name": collection_name,
                 "latitude": latest_doc["Latitude"],
-                "longitude": latest_doc["Longitude"]
+                "longitude": latest_doc["Longitude"],
+                "status": status,
+                "status_color": status_color,
+                "ign_status": latest_doc.get("IGN", "Unknown"),
+                "power_status": latest_doc.get("Power", "Unknown"),
+                "last_updated": latest_doc.get("GPSActualTime", "N/A"),
+                "location": latest_doc.get("Location", "N/A")
             })
     return jsonify(vehicle_locations)
 
 @bp.route('/vehicle-status')
 @login_required
 def vehicle_status():
-    collections = mongo.db.list_collection_names()
+    collections = [col for col in mongo.db.list_collection_names() if col != "users"]
+
     vehicles = []
 
     for collection_name in collections:
@@ -215,18 +227,29 @@ def add_user():
     password = data.get('password')
     role = data.get('role')
 
-    # Check if a user with the same userId already exists
+    # Check if user already exists
     existing_user = mongo.db.users.find_one({'userId': user_id})
     if existing_user:
         return jsonify({'success': False, 'error': 'User ID already exists'}), 400
 
-    # Create a new user document
+    # Create new user document
     new_user = {
         'userId': user_id,
         'username': username,
-        'password': generate_password_hash(password),  # Consider hashing the password before storing
+        'password': generate_password_hash(password),
         'role': role
     }
+
+    # Add implement-specific fields if role is implement
+    if role == 'implement':
+        implement_id = data.get('implementId')
+        vehicles = data.get('vehicles', [])
+        
+        if not implement_id:
+            return jsonify({'success': False, 'error': 'Implement ID is required'}), 400
+            
+        new_user['implementId'] = implement_id
+        new_user['vehicles'] = vehicles
 
     try:
         mongo.db.users.insert_one(new_user)
@@ -241,13 +264,27 @@ def delete_user():
     userid = data.get('userid')
 
     try:
+        # Check if trying to delete the current user
+        if userid == current_user.userId:
+            return jsonify({
+                'success': False, 
+                'error': 'You cannot delete your own account'
+            }), 403
+
         # Delete the user from the database
-        result = mongo.db.users.delete_one({'userid': userid})
+        result = mongo.db.users.delete_one({'userId': userid})
         
         if result.deleted_count == 0:
-            return jsonify({'success': False, 'error': 'User not found'}), 404
+            return jsonify({
+                'success': False, 
+                'error': 'User not found'
+            }), 404
 
         return jsonify({'success': True}), 200
+
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({
+            'success': False, 
+            'error': str(e)
+        }), 500
 

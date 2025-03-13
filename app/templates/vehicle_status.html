@@ -3,7 +3,6 @@
 {% block title %}Vehicle Status{% endblock %}
 
 {% block extra_css %}
-<!-- Add Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
     .details-row {
@@ -36,6 +35,33 @@
         border-radius: 8px;
         padding: 15px;
         box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .vehicle-name {
+        color: white;
+        text-shadow: 2px 2px 2px black;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    
+    .vehicle-popup {
+        font-size: 14px;
+        padding: 5px;
+    }
+    
+    .vehicle-popup h5 {
+        color: #2E7D32;
+        margin-bottom: 10px;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 5px;
+    }
+    
+    .vehicle-popup .badge {
+        margin-left: 5px;
+    }
+    
+    .leaflet-popup-content {
+        margin: 10px;
     }
 </style>
 {% endblock %}
@@ -125,12 +151,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Add Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let currentMap = null;
-    let currentVehicleId = null;
 
     window.toggleDetails = function(vehicleId) {
         const detailsRow = document.getElementById(`details-${vehicleId}`);
@@ -178,8 +202,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h6 class="mb-3">Vehicle Information</h6>
                     <p><strong>ID:</strong> ${data.vehicle_id}</p>
                     <p><strong>Status:</strong> <span class="badge bg-${data.status_color}">${data.status}</span></p>
-                    <p><strong>IGN Status:</strong> ${data.ign_status}</p>
-                    <p><strong>Power Status:</strong> ${data.power_status}</p>
+                    <p><strong>IGN Status:</strong> <span class="badge bg-${data.ign_status === 'ON' ? 'success' : 'danger'}">${data.ign_status}</span></p>
+                    <p><strong>Power Status:</strong> <span class="badge bg-${data.power_status === 'ON' ? 'success' : 'danger'}">${data.power_status}</span></p>
                     <p><strong>Last Updated:</strong> ${data.last_updated}</p>
                     <p><strong>Location:</strong> ${data.Location}</p>
                 `;
@@ -191,19 +215,82 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const map = L.map(`map-${vehicleId}`).setView([data.latitude, data.longitude], 13);
                 currentMap = map;
-                
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
+
+                // Create panes with different z-indices
+                map.createPane('satellite');
+                map.createPane('labels');
+                map.getPane('satellite').style.zIndex = 200;
+                map.getPane('labels').style.zIndex = 650;
+
+                // Add Esri Satellite layer
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    pane: 'satellite',
+                    maxZoom: 19,
+                    attribution: 'Imagery &copy; Esri'
                 }).addTo(map);
-                
-                const marker = L.marker([data.latitude, data.longitude]).addTo(map);
+
+                // Add OpenStreetMap labels
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+                    pane: 'labels',
+                    maxZoom: 19,
+                    subdomains: 'abcd',
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Create custom icon for the marker based on status
+                const statusImage = data.status ? data.status.toLowerCase() : 'tractor';
+                const vehicleIcon = L.divIcon({
+                    html: `
+                        <div>
+                            <img src="{{ url_for('static', filename='assets/images/') }}${statusImage}.png" 
+                                 style="width: 32px; height: 32px;">
+                            <div class="vehicle-name" style="text-align: center; width: 200px; margin-left: -84px;">
+                                ${data.vehicle_id}
+                            </div>
+                        </div>`,
+                    className: 'vehicle-marker',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16],
+                    popupAnchor: [0, -16]
+                });
+
+                // Add marker with custom icon
+                const marker = L.marker([data.latitude, data.longitude], {
+                    icon: vehicleIcon
+                }).addTo(map);
+
                 marker.bindPopup(`
-                    <b>${data.vehicle_id}</b><br>
-                    Status: ${data.status}<br>
-                    Last Updated: ${data.last_updated}
-                `).openPopup();
-                
-                map.invalidateSize();
+                    <div class="vehicle-popup">
+                        <h5 class="mb-2">${data.vehicle_id}</h5>
+                        <div class="mb-2">
+                            <strong>Status:</strong> 
+                            <span class="badge bg-${data.status_color}">${data.status}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>IGN Status:</strong> 
+                            <span class="badge bg-${data.ign_status === 'ON' ? 'success' : 'danger'}">${data.ign_status}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Power Status:</strong> 
+                            <span class="badge bg-${data.power_status === 'ON' ? 'success' : 'danger'}">${data.power_status}</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Last Updated:</strong><br>
+                            ${data.last_updated}
+                        </div>
+                        <div>
+                            <strong>Location:</strong><br>
+                            ${data.Location}
+                        </div>
+                    </div>
+                `, {
+                    maxWidth: 300
+                }).openPopup();
+
+                // Force map to recalculate its size
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
             })
             .catch(error => {
                 console.error('Error:', error);
