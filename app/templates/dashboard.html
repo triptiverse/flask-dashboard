@@ -3,6 +3,7 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+{% if current_user.role == 'admin' %}
 <div class="row">
     <!-- Action Dropdown -->
     <div class="input-group mb-3">
@@ -17,7 +18,7 @@
         <input type="text" class="form-control" aria-label="Implement ID" id="implementInput" disabled placeholder="">
     </div>
 </div>
-
+{% endif %}
 <!-- Charts Section -->
 <div class="row">
     <div class="col-xl-6 mb-4">

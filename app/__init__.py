@@ -1,9 +1,9 @@
 from flask import Flask, jsonify
 from flask_pymongo import PyMongo
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from bson.objectid import ObjectId
 from config import Config
-from app.utils import counts  # Import counts from utils
+from app.utils import get_counts  # Import counts from utils
 
 # Initialize PyMongo instances for both databases
 mongo = PyMongo()  # For VehicleTracking database
@@ -59,18 +59,11 @@ def create_app(config_class=Config):
         # First try to find user in Dashboard database by userId field
         user_data = dashboard_db.db.users.find_one({'userId': user_id})
         
-        # If not found, try VehicleTracking database (for backward compatibility)
-        if not user_data:
-            user_data = mongo.db.users.find_one({'userId': user_id})
-        
-        # If still not found and the ID looks like an ObjectId, try finding by _id in both databases
+        # If still not found and the ID looks like an ObjectId, try finding by _id 
         if not user_data and len(user_id) == 24 and all(c in '0123456789abcdefABCDEF' for c in user_id):
             try:
                 # Try Dashboard database first
                 user_data = dashboard_db.db.users.find_one({'_id': ObjectId(user_id)})
-                if not user_data:
-                    # Then try VehicleTracking database
-                    user_data = mongo.db.users.find_one({'_id': ObjectId(user_id)})
             except:
                 pass
         
@@ -82,6 +75,11 @@ def create_app(config_class=Config):
     # Context processor to inject counts into all templates
     @app.context_processor
     def inject_counts():
-        return dict(counts=counts)
+        # Check if user is authenticated before trying to access role
+        if current_user.is_authenticated:
+            return dict(counts=get_counts(current_user))
+        else:
+            # Return empty or default counts for anonymous users
+            return dict(counts={})
 
     return app 

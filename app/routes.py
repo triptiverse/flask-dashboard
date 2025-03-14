@@ -7,17 +7,12 @@ from time import time
 from functools import wraps
 from werkzeug.security import generate_password_hash
 from pymongo import MongoClient
-from app.utils import counts  # Import counts if needed
+from app.utils import dummy_data,get_machine_states  # Import counts if needed
 from bson.objectid import ObjectId
 
 bp = Blueprint('main', __name__)
 
-# Mock dataset for implement-specific data
-dummy_data = {
-    "101": {"running": 5, "stop": 2, "idle": 3, "total_machines": 10, "cultivated_area": 15000, "total_area" : 18000},
-    "102": {"running": 3, "stop": 4, "idle": 1, "total_machines": 8, "cultivated_area": 13000, "total_area" : 15000},
-    "103": {"running": 6, "stop": 1, "idle": 2, "total_machines": 9, "cultivated_area": 14000, "total_area" : 20000}
-}
+
 # Cache storage
 last_update_time = 0
 cached_locations = None
@@ -50,12 +45,7 @@ def index():
 @bp.route('/dashboard')
 @login_required
 def dashboard():
-    machine_states = {
-        'running': 10,
-        'stop': 4,
-        'idle': 5
-    }
-
+    machine_states = get_machine_states(current_user)
     total_area = sum([data["total_area"] for data in dummy_data.values()])
     total_cultivated = sum([data["cultivated_area"] for data in dummy_data.values()])
 
@@ -96,29 +86,30 @@ def get_vehicle_locations():
     vehicle_locations = []
 
     for collection_name in collections:
-        latest_doc = mongo.db[collection_name].find_one(
-            sort=[("_id", -1)]
-        )
-        
-        if latest_doc and "Latitude" in latest_doc and "Longitude" in latest_doc:
-            status = latest_doc.get("Status", "Unknown")
-            status_color = {
-                "RUNNING": "success",   
-                "STOP": "danger",
-                "INACTIVE": "warning"
-            }.get(status, "secondary")
+        if current_user.role == 'admin' or collection_name in current_user.vehicles:
+            latest_doc = mongo.db[collection_name].find_one(
+                sort=[("_id", -1)]
+            )
+            
+            if latest_doc and "Latitude" in latest_doc and "Longitude" in latest_doc:
+                status = latest_doc.get("Status", "Unknown")
+                status_color = {
+                    "RUNNING": "success",   
+                    "STOP": "danger",
+                    "INACTIVE": "warning"
+                }.get(status, "secondary")
 
-            vehicle_locations.append({
-                "vehicle_name": collection_name,
-                "latitude": latest_doc["Latitude"],
-                "longitude": latest_doc["Longitude"],
-                "status": status,
-                "status_color": status_color,
-                "ign_status": latest_doc.get("IGN", "Unknown"),
-                "power_status": latest_doc.get("Power", "Unknown"),
-                "last_updated": latest_doc.get("GPSActualTime", "N/A"),
-                "location": latest_doc.get("Location", "N/A")
-            })
+                vehicle_locations.append({
+                    "vehicle_name": collection_name,
+                    "latitude": latest_doc["Latitude"],
+                    "longitude": latest_doc["Longitude"],
+                    "status": status,
+                    "status_color": status_color,
+                    "ign_status": latest_doc.get("IGN", "Unknown"),
+                    "power_status": latest_doc.get("Power", "Unknown"),
+                    "last_updated": latest_doc.get("GPSActualTime", "N/A"),
+                    "location": latest_doc.get("Location", "N/A")
+                })
     return jsonify(vehicle_locations)
 
 @bp.route('/vehicle-status')
@@ -129,43 +120,44 @@ def vehicle_status():
     vehicles = []
 
     for collection_name in collections:
-        latest_doc = mongo.db[collection_name].find_one(
-            sort=[("_id", -1)]
-        )
-        
-        if latest_doc:
-            status = "Unknown"
-            status_color = "secondary"
-            
-            if "Status" in latest_doc:
-                status = latest_doc["Status"]
-                status_color = {
-                    "RUNNING": "success",   
-                    "STOP": "danger",
-                    "INACTIVE": "warning"
-                }.get(status, "secondary")
+        if current_user.role == 'admin' or collection_name in current_user.vehicles:
+            latest_doc = mongo.db[collection_name].find_one(
+                sort=[("_id", -1)]
+            )
 
-            # Get IGN and Power status with colors
-            ign_status = latest_doc.get("IGN", "Unknown")
-            ign_color = "success" if ign_status == "ON" else "danger"
-            
-            power_status = latest_doc.get("Power", "Unknown")
-            power_color = "success" if power_status == "ON" else "danger"
+            if latest_doc:
+                status = "Unknown"
+                status_color = "secondary"
 
-            vehicles.append({
-                "vehicle_name": collection_name,
-                "status": status,
-                "status_color": status_color,
-                "ign_status": ign_status,
-                "ign_color": ign_color,
-                "power_status": power_status,
-                "power_color": power_color,
-                "last_updated": latest_doc.get("GPSActualTime", "N/A"),
-                "location": latest_doc.get("Location", "N/A"),
-                "latitude": latest_doc.get("Latitude", "N/A"),
-                "longitude": latest_doc.get("Longitude", "N/A")
-            })
+                if "Status" in latest_doc:
+                    status = latest_doc["Status"]
+                    status_color = {
+                        "RUNNING": "success",
+                        "STOP": "danger",
+                        "INACTIVE": "warning"
+                    }.get(status, "secondary")
 
+                # Get IGN and Power status with colors
+                ign_status = latest_doc.get("IGN", "Unknown")
+                ign_color = "success" if ign_status == "ON" else "danger"
+
+                power_status = latest_doc.get("Power", "Unknown")
+                power_color = "success" if power_status == "ON" else "danger"
+
+                vehicles.append({
+                    "vehicle_name": collection_name,
+                    "status": status,
+                    "status_color": status_color,
+                    "ign_status": ign_status,
+                    "ign_color": ign_color,
+                    "power_status": power_status,
+                    "power_color": power_color,
+                    "last_updated": latest_doc.get("GPSActualTime", "N/A"),
+                    "location": latest_doc.get("Location", "N/A"),
+                    "latitude": latest_doc.get("Latitude", "N/A"),
+                    "longitude": latest_doc.get("Longitude", "N/A")
+                })
+    print(f"length of vehicles: {len(vehicles)}")
     return render_template('vehicle_status.html', vehicles=vehicles)
 
 @bp.route('/api/vehicle/<vehicle_id>/location')
@@ -213,7 +205,10 @@ def vehicle_location(vehicle_id):
 @bp.route('/manage_users')
 @login_required
 def manage_users():
-    # Get all users from Dashboard database
+    # Get all users from Dashboard database 
+    if current_user.role != 'admin':
+        flash('Unauthorized access. Admins only.', 'danger')
+        return redirect(url_for('main.dashboard'))  # Redirect non-admin users
     users = list(dashboard_db.db.users.find())
     return render_template('manage_users.html', users=users, current_user=current_user)
 
@@ -238,6 +233,10 @@ def add_user():
             'password': generate_password_hash(data.get('password')),
             'role': data.get('role')
         }
+        
+        # Add phone if provided
+        if data.get('phone'):
+            user_data['phone'] = data.get('phone')
         
         # Add implement-specific fields if role is implement
         if data.get('role') == 'implement':
@@ -294,6 +293,16 @@ def edit_user():
             'username': data.get('username'),
             'role': data.get('role')
         }
+        
+        # Update phone if provided
+        if data.get('phone'):
+            update_data['phone'] = data.get('phone')
+        elif 'phone' in user:
+            # Remove phone if it was previously set but now empty
+            dashboard_db.db.users.update_one(
+                {'userId': original_user_id},
+                {'$unset': {'phone': ''}}
+            )
         
         # Update password only if provided
         if data.get('password'):

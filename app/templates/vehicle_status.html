@@ -63,6 +63,26 @@
     .leaflet-popup-content {
         margin: 10px;
     }
+
+    /* Added styles for search */
+    .search-container {
+        position: relative;
+    }
+
+    .search-container .clear-search {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #6c757d;
+    }
+
+    .no-results {
+        padding: 20px;
+        text-align: center;
+        display: none;
+    }
 </style>
 {% endblock %}
 
@@ -77,11 +97,23 @@
                 </h5>
             </div>
             <div class="col-auto">
-                <input type="text" class="form-control form-control-sm" placeholder="Search vehicles...">
+                <div class="search-container">
+                    <input type="text" id="vehicleSearch" class="form-control form-control-sm" placeholder="Search vehicles...">
+                    <span class="clear-search" id="clearSearch"><i class="fas fa-times"></i></span>
+                </div>
             </div>
         </div>
     </div>
     <div class="card-body p-0">
+        <!-- Search count info -->
+        <div class="bg-light p-2 border-bottom">
+            <div class="d-flex justify-content-end align-items-center">
+                <div>
+                    <small class="text-muted" id="vehicleCount">Showing all vehicles</small>
+                </div>
+            </div>
+        </div>
+        
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
@@ -94,7 +126,7 @@
                         <th class="text-center">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="vehicleTableBody">
                     {% for vehicle in vehicles %}
                     <tr class="vehicle-row" data-vehicle="{{ vehicle.vehicle_name }}">
                         <td class="px-4">{{ vehicle.vehicle_name }}</td>
@@ -145,6 +177,14 @@
                     {% endfor %}
                 </tbody>
             </table>
+            
+            <!-- No results message -->
+            <div class="no-results" id="noResults">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No vehicles match your search criteria.
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -155,10 +195,24 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let currentMap = null;
+    let activeVehicleId = null;
+    const searchInput = document.getElementById('vehicleSearch');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    const vehicleRows = document.querySelectorAll('.vehicle-row');
+    const noResults = document.getElementById('noResults');
+    const vehicleCount = document.getElementById('vehicleCount');
+    
+    // Initialize search functionality
+    initSearch();
 
     window.toggleDetails = function(vehicleId) {
         const detailsRow = document.getElementById(`details-${vehicleId}`);
         const vehicleRow = document.querySelector(`tr[data-vehicle="${vehicleId}"]`);
+        
+        // If the vehicle row is hidden due to filtering, don't proceed
+        if (vehicleRow.style.display === 'none') {
+            return;
+        }
         
         // If already open, close it
         if (detailsRow.classList.contains('active')) {
@@ -168,6 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentMap.remove();
                 currentMap = null;
             }
+            activeVehicleId = null;
             return;
         }
 
@@ -182,6 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Open this one
         detailsRow.classList.add('active');
         vehicleRow.classList.add('selected');
+        activeVehicleId = vehicleId;
 
         // Show loading state
         document.getElementById(`info-${vehicleId}`).innerHTML = `
@@ -197,6 +253,9 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch(`/api/vehicle/${vehicleId}/location`)
             .then(response => response.json())
             .then(data => {
+                // Check if this is still the active vehicle (might have changed during fetch)
+                if (activeVehicleId !== vehicleId) return;
+                
                 // Update info
                 document.getElementById(`info-${vehicleId}`).innerHTML = `
                     <h6 class="mb-3">Vehicle Information</h6>
@@ -294,6 +353,9 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error:', error);
+                // Check if this is still the active vehicle (might have changed during fetch)
+                if (activeVehicleId !== vehicleId) return;
+                
                 document.getElementById(`info-${vehicleId}`).innerHTML = `
                     <div class="alert alert-danger">
                         <h6>Error Loading Details</h6>
@@ -306,6 +368,115 @@ document.addEventListener('DOMContentLoaded', function() {
     window.viewHistory = function(vehicleId) {
         console.log('View history for:', vehicleId);
     };
+    
+    // Initialize search functionality
+    function initSearch() {
+        // Search functionality
+        searchInput.addEventListener('input', function() {
+            applySearch();
+        });
+        
+        // Clear search button
+        clearSearchBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            applySearch();
+            searchInput.focus();
+        });
+        
+        // Initial count
+        updateVehicleCount();
+    }
+    
+    // Apply search filter
+    function applySearch() {
+        const searchTerm = searchInput.value.toLowerCase();
+        
+        let visibleCount = 0;
+        let totalCount = vehicleRows.length;
+        let openDetailsStillVisible = false;
+        
+        // First pass: determine visibility of vehicle rows
+        vehicleRows.forEach(row => {
+            const vehicleId = row.getAttribute('data-vehicle').toLowerCase();
+            
+            // Check if matches search
+            const matchesSearch = vehicleId.includes(searchTerm);
+            
+            // Determine if this row should be visible
+            const shouldBeVisible = matchesSearch;
+            
+            // Apply visibility
+            row.style.display = shouldBeVisible ? '' : 'none';
+            
+            // Count visible rows
+            if (shouldBeVisible) {
+                visibleCount++;
+                
+                // Check if this is the currently open details
+                if (activeVehicleId === row.getAttribute('data-vehicle')) {
+                    openDetailsStillVisible = true;
+                }
+            }
+        });
+        
+        // Second pass: handle details rows
+        document.querySelectorAll('.details-row').forEach(detailsRow => {
+            const vehicleId = detailsRow.id.replace('details-', '');
+            const vehicleRow = document.querySelector(`tr[data-vehicle="${vehicleId}"]`);
+            
+            // If the vehicle row is visible and this details row is active, show it
+            if (vehicleRow.style.display !== 'none' && detailsRow.classList.contains('active')) {
+                detailsRow.style.display = '';
+            } else {
+                detailsRow.style.display = 'none';
+            }
+        });
+        
+        // If the currently open details is no longer visible, close it properly
+        if (activeVehicleId && !openDetailsStillVisible) {
+            const detailsRow = document.getElementById(`details-${activeVehicleId}`);
+            const vehicleRow = document.querySelector(`tr[data-vehicle="${activeVehicleId}"]`);
+            
+            if (detailsRow) {
+                detailsRow.classList.remove('active');
+            }
+            
+            if (vehicleRow) {
+                vehicleRow.classList.remove('selected');
+            }
+            
+            if (currentMap) {
+                currentMap.remove();
+                currentMap = null;
+            }
+            
+            activeVehicleId = null;
+        }
+        
+        // Show/hide no results message
+        if (visibleCount === 0 && totalCount > 0) {
+            noResults.style.display = 'block';
+        } else {
+            noResults.style.display = 'none';
+        }
+        
+        // Update count text
+        updateVehicleCount(visibleCount, totalCount);
+    }
+    
+    // Update the vehicle count text
+    function updateVehicleCount(visible, total) {
+        if (visible === undefined) {
+            // Initial state
+            vehicleCount.textContent = `Showing all vehicles (${vehicleRows.length})`;
+        } else {
+            if (searchInput.value) {
+                vehicleCount.textContent = `Showing ${visible} of ${total} vehicles matching "${searchInput.value}"`;
+            } else {
+                vehicleCount.textContent = `Showing all vehicles (${total})`;
+            }
+        }
+    }
 });
 </script>
 {% endblock %}

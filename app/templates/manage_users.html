@@ -18,6 +18,7 @@
                 <th>User ID</th>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Phone</th>
                 <th>Details</th>
                 <th>Actions</th>
             </tr>
@@ -26,8 +27,9 @@
             {% for user in users %}
             <tr>
                 <td>{{ user.userId }}</td>
-                <td>{{ user.username }}</td>
+                <td>{{ user.username if user.username else '-' }}</td>
                 <td>{{ user.role }}</td>
+                <td>{{ user.phone if user.phone else '-' }}</td>
                 <td>
                     {% if user.role == 'implement' %}
                         <strong>Implement ID:</strong> {{ user.implementId }}<br>
@@ -42,7 +44,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-primary" onclick="editUser('{{ user.userId }}', '{{ user.username }}', '{{ user.role }}', '{{ user.implementId if user.implementId else '' }}', '{{ user.vehicles|join(',') if user.vehicles else '' }}')">Edit</button>
+                    <button class="btn btn-sm btn-primary" onclick="editUser('{{ user.userId }}', '{{ user.username if user.username else '' }}', '{{ user.role }}', '{{ user.implementId if user.implementId else '' }}', '{{ user.vehicles|join(',') if user.vehicles else '' }}', '{{ user.phone if user.phone else '' }}')">Edit</button>
                     {% if user.userId != current_user.userId %}
                     <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.userId }}')">Delete</button>
                     {% else %}
@@ -71,13 +73,18 @@
                         <input type="text" class="form-control" id="userId" required>
                     </div>
                     <div class="form-group mb-3">
-                        <label for="username">Username</label>
-                        <input type="text" class="form-control" id="username" required>
+                        <label for="username">Username <span class="text-muted">(Optional)</span></label>
+                        <input type="text" class="form-control" id="username" placeholder="Enter username">
                     </div>
                     <div class="form-group mb-3">
                         <label for="password">Password</label>
                         <input type="password" class="form-control" id="password" required>
                         <small id="passwordHelp" class="form-text text-muted" style="display: none;">Leave blank to keep current password</small>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="phone">Phone Number <span class="text-muted">(Optional)</span></label>
+                        <input type="tel" class="form-control" id="phone" placeholder="Enter phone number">
+                        <small class="form-text text-muted">Format: +91 1234567890</small>
                     </div>
                     <div class="form-group mb-3">
                         <label for="role">Role</label>
@@ -242,12 +249,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const userId = document.getElementById('userId').value;
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
+        const phone = document.getElementById('phone').value;
         const role = roleSelect.value;
         
-        console.log("Form values:", { isEdit, originalUserId, userId, username, role });
+        console.log("Form values:", { isEdit, originalUserId, userId, username, role, phone });
         
         // Validate required fields
-        if (!userId || !username || (!isEdit && !password) || !role) {
+        if (!userId || (!isEdit && !password) || !role) {
             alert('Please fill in all required fields');
             return;
         }
@@ -255,9 +263,18 @@ document.addEventListener('DOMContentLoaded', function() {
         // Prepare user data
         const userData = {
             userId: userId,
-            username: username,
             role: role
         };
+        
+        // Add username if provided
+        if (username) {
+            userData.username = username;
+        }
+        
+        // Add phone if provided
+        if (phone) {
+            userData.phone = phone;
+        }
         
         // Add password only if provided or in add mode
         if (password) {
@@ -322,8 +339,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Function to open modal for editing a user
-function editUser(userId, username, role, implementId, vehicles) {
-    console.log("Edit user:", { userId, username, role, implementId, vehicles });
+function editUser(userId, username, role, implementId, vehicles, phone) {
+    console.log("Edit user:", { userId, username, role, implementId, vehicles, phone });
     
     // Set form to edit mode
     document.getElementById('editMode').value = "true";
@@ -333,10 +350,11 @@ function editUser(userId, username, role, implementId, vehicles) {
     
     // Fill form with user data
     document.getElementById('userId').value = userId;
-    document.getElementById('username').value = username;
+    document.getElementById('username').value = username || '';
     document.getElementById('password').value = '';
     document.getElementById('password').required = false;
     document.getElementById('passwordHelp').style.display = "block";
+    document.getElementById('phone').value = phone || '';
     
     // Set role and show/hide implement fields
     const roleSelect = document.getElementById('role');
