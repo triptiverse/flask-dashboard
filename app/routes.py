@@ -1,13 +1,14 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_required, current_user
 from datetime import datetime
 from flask_pymongo import PyMongo
-from app import mongo  # This imports the mongo instance from your app package
+from app import mongo, dashboard_db  # This imports the mongo instance from your app package
 from time import time
 from functools import wraps
 from werkzeug.security import generate_password_hash
 from pymongo import MongoClient
 from app.utils import counts  # Import counts if needed
+from bson.objectid import ObjectId
 
 bp = Blueprint('main', __name__)
 
@@ -40,6 +41,7 @@ def with_cache(func):
     return wrapper
 
 @bp.route('/')
+@bp.route('/index')
 def index():
     if not current_user.is_authenticated:
         return redirect(url_for('auth.login'))
@@ -122,7 +124,7 @@ def get_vehicle_locations():
 @bp.route('/vehicle-status')
 @login_required
 def vehicle_status():
-    collections = [col for col in mongo.db.list_collection_names() if col != "users"]
+    collections = mongo.db.list_collection_names()
 
     vehicles = []
 
@@ -208,67 +210,121 @@ def vehicle_location(vehicle_id):
         return jsonify({'error': str(e)}), 500
 
 
-@bp.route('/manage-users')
+@bp.route('/manage_users')
 @login_required
 def manage_users():
-    # Fetch all users from the database
-    users = mongo.db.users.find()  # Assuming 'users' is your collection name
-
-    # Convert the cursor to a list of dictionaries
-    user_list = list(users)
-
-    return render_template('manage_users.html', users=user_list)
+    # Get all users from Dashboard database
+    users = list(dashboard_db.db.users.find())
+    return render_template('manage_users.html', users=users, current_user=current_user)
 
 @bp.route('/add_user', methods=['POST'])
+@login_required
 def add_user():
     try:
         data = request.get_json()
-        print("Received data:", data)  # Debug print
         
-        # Validate required fields
-        required_fields = ['userId', 'username', 'password', 'role']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({
-                    'success': False,
-                    'error': f'{field} is required'
-                }), 400
-
         # Check if user already exists
-        existing_user = mongo.db.users.find_one({'userId': data['userId']})
+        existing_user = dashboard_db.db.users.find_one({'userId': data.get('userId')})
         if existing_user:
             return jsonify({
                 'success': False,
                 'error': 'User ID already exists'
             }), 400
-
-        # Create new user document
-        new_user = {
-            'userId': data['userId'],
-            'username': data['username'],
-            'password': generate_password_hash(data['password']),
-            'role': data['role']
+        
+        # Prepare user data
+        user_data = {
+            'userId': data.get('userId'),
+            'username': data.get('username'),
+            'password': generate_password_hash(data.get('password')),
+            'role': data.get('role')
         }
-
+        
         # Add implement-specific fields if role is implement
-        if data['role'] == 'implement':
+        if data.get('role') == 'implement':
             if not data.get('implementId'):
                 return jsonify({
                     'success': False,
                     'error': 'Implement ID is required for implement role'
                 }), 400
             
-            new_user['implementId'] = data['implementId']
-            new_user['vehicles'] = data.get('vehicles', [])
-
-        # Insert the new user
-        mongo.db.users.insert_one(new_user)
-        print("User added successfully:", new_user['userId'])  # Debug print
-
+            user_data['implementId'] = data.get('implementId')
+            user_data['vehicles'] = data.get('vehicles', [])
+        
+        # Insert user into Dashboard database
+        dashboard_db.db.users.insert_one(user_data)
+        
         return jsonify({'success': True}), 200
-
+        
     except Exception as e:
-        print("Error adding user:", str(e))  # Debug print
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/edit_user', methods=['POST'])
+@login_required
+def edit_user():
+    try:
+        data = request.get_json()
+        
+        # Get original user ID and new data
+        original_user_id = data.get('originalUserId')
+        new_user_id = data.get('userId')
+        
+        # Find the user to update in Dashboard database
+        user = dashboard_db.db.users.find_one({'userId': original_user_id})
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': 'User not found'
+            }), 404
+        
+        # Check if new user ID already exists (if changing user ID)
+        if original_user_id != new_user_id:
+            existing_user = dashboard_db.db.users.find_one({'userId': new_user_id})
+            if existing_user:
+                return jsonify({
+                    'success': False,
+                    'error': 'User ID already exists'
+                }), 400
+        
+        # Prepare update data
+        update_data = {
+            'userId': new_user_id,
+            'username': data.get('username'),
+            'role': data.get('role')
+        }
+        
+        # Update password only if provided
+        if data.get('password'):
+            update_data['password'] = generate_password_hash(data.get('password'))
+        
+        # Add implement-specific fields if role is implement
+        if data.get('role') == 'implement':
+            if not data.get('implementId'):
+                return jsonify({
+                    'success': False,
+                    'error': 'Implement ID is required for implement role'
+                }), 400
+            
+            update_data['implementId'] = data.get('implementId')
+            update_data['vehicles'] = data.get('vehicles', [])
+        elif 'implementId' in user:
+            # If role changed from implement to something else, remove implement-specific fields
+            dashboard_db.db.users.update_one(
+                {'userId': original_user_id},
+                {'$unset': {'implementId': '', 'vehicles': ''}}
+            )
+        
+        # Update the user in Dashboard database
+        dashboard_db.db.users.update_one(
+            {'userId': original_user_id},
+            {'$set': update_data}
+        )
+        
+        return jsonify({'success': True}), 200
+        
+    except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
@@ -277,31 +333,24 @@ def add_user():
 @bp.route('/delete_user', methods=['POST'])
 @login_required
 def delete_user():
-    data = request.get_json()
-    userid = data.get('userid')
-
     try:
-        # Check if trying to delete the current user
-        if userid == current_user.userId:
-            return jsonify({
-                'success': False, 
-                'error': 'You cannot delete your own account'
-            }), 403
-
-        # Delete the user from the database
-        result = mongo.db.users.delete_one({'userId': userid})
+        data = request.get_json()
+        user_id = data.get('userid')
         
-        if result.deleted_count == 0:
+        # Delete user from Dashboard database
+        result = dashboard_db.db.users.delete_one({'userId': user_id})
+        
+        if result.deleted_count > 0:
+            return jsonify({'success': True}), 200
+        else:
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': 'User not found'
             }), 404
-
-        return jsonify({'success': True}), 200
-
+            
     except Exception as e:
         return jsonify({
-            'success': False, 
+            'success': False,
             'error': str(e)
         }), 500
 

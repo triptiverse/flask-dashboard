@@ -1,15 +1,16 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from app import mongo
+from app import mongo, dashboard_db
 from ..models import User
 
+# Define the auth Blueprint
 auth = Blueprint('auth', __name__)
 
 @auth.route('/create_test_user')
 def create_test_user():
-    # Check if user already exists
-    if mongo.db.users.find_one({'username': 'admin'}):
+    # Check if user already exists in Dashboard database
+    if dashboard_db.db.users.find_one({'username': 'admin'}):
         return 'Test user already exists!'
     
     # Create new user
@@ -20,8 +21,8 @@ def create_test_user():
         'role': 'admin'
     }
     
-    # Insert into MongoDB
-    mongo.db.users.insert_one(test_user)
+    # Insert into Dashboard MongoDB
+    dashboard_db.db.users.insert_one(test_user)
     return 'Test user created successfully! UserID: admin, Password: admin123'
 
 @auth.route('/login', methods=['GET', 'POST'])
@@ -34,7 +35,14 @@ def login():
         userID = request.form.get('userID')
         password = request.form.get('password')
         print(userID, password)
-        user = mongo.db.users.find_one({'userId': userID})
+        
+        # Try to find user in Dashboard database first
+        user = dashboard_db.db.users.find_one({'userId': userID})
+        
+        # If not found, try VehicleTracking database (for backward compatibility)
+        if not user:
+            user = mongo.db.users.find_one({'userId': userID})
+            
         print(f"user = {user}")
         if user and check_password_hash(user['password'], password):
             user_obj = User(user)

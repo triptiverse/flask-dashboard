@@ -42,6 +42,7 @@
                     {% endif %}
                 </td>
                 <td>
+                    <button class="btn btn-sm btn-primary" onclick="editUser('{{ user.userId }}', '{{ user.username }}', '{{ user.role }}', '{{ user.implementId if user.implementId else '' }}', '{{ user.vehicles|join(',') if user.vehicles else '' }}')">Edit</button>
                     {% if user.userId != current_user.userId %}
                     <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.userId }}')">Delete</button>
                     {% else %}
@@ -53,15 +54,18 @@
         </tbody>
     </table>
 
-    <!-- Custom Modal for adding a new user -->
+    <!-- Custom Modal for adding/editing a user -->
     <div id="customModal" class="custom-modal">
         <div class="custom-modal-content card">
             <div class="card-header">
                 <span class="close-button" id="closeModalButton">&times;</span>
-                <h5 class="card-title">Add New User</h5>
+                <h5 class="card-title" id="modalTitle">Add New User</h5>
             </div>
             <div class="card-body">
-                <form id="addUserForm">
+                <form id="userForm">
+                    <input type="hidden" id="editMode" value="false">
+                    <input type="hidden" id="originalUserId" value="">
+                    
                     <div class="form-group mb-3">
                         <label for="userId">User ID</label>
                         <input type="text" class="form-control" id="userId" required>
@@ -73,6 +77,7 @@
                     <div class="form-group mb-3">
                         <label for="password">Password</label>
                         <input type="password" class="form-control" id="password" required>
+                        <small id="passwordHelp" class="form-text text-muted" style="display: none;">Leave blank to keep current password</small>
                     </div>
                     <div class="form-group mb-3">
                         <label for="role">Role</label>
@@ -92,11 +97,11 @@
                         <div class="form-group mb-3">
                             <label for="vehicles">Vehicles (comma-separated)</label>
                             <input type="text" class="form-control" id="vehicles" placeholder="Enter vehicle IDs separated by commas">
-                            <small class="form-text text-muted">Example: V001, V002, V003</small>
+                            <small class="form-text text-muted">Example: BH001AHRSD001, BH001AHRSD002, etc.</small>
                         </div>
                     </div>
                     
-                    <button type="button" class="btn btn-success" id="addUserButton">Add User</button>
+                    <button type="button" class="btn btn-success" id="saveUserBtn">Save User</button>
                 </form>
             </div>
         </div>
@@ -158,7 +163,7 @@
     padding: 30px;
 }
 
-#addUserButton {
+#saveUserBtn {
     margin-top: 10px;
 }
 </style>
@@ -170,11 +175,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Get modal elements
     const customModal = document.getElementById('customModal');
+    const modalTitle = document.getElementById('modalTitle');
     const openModalButton = document.getElementById('openModalButton');
     const closeModalButton = document.getElementById('closeModalButton');
     const roleSelect = document.getElementById('role');
     const implementFields = document.getElementById('implementFields');
-    const addUserButton = document.getElementById('addUserButton');
+    const saveUserBtn = document.getElementById('saveUserBtn');
+    const editMode = document.getElementById('editMode');
+    const passwordField = document.getElementById('password');
+    const passwordHelp = document.getElementById('passwordHelp');
     
     console.log("Modal elements:", {
         customModal: !!customModal,
@@ -182,14 +191,18 @@ document.addEventListener('DOMContentLoaded', function() {
         closeModalButton: !!closeModalButton,
         roleSelect: !!roleSelect,
         implementFields: !!implementFields,
-        addUserButton: !!addUserButton
+        saveUserBtn: !!saveUserBtn
     });
     
-    // Open modal
+    // Open modal for adding a new user
     openModalButton.addEventListener('click', function() {
-        console.log("Opening modal");
-        document.getElementById('addUserForm').reset();
-        implementFields.style.display = 'none';
+        console.log("Opening modal for adding");
+        resetForm();
+        editMode.value = "false";
+        modalTitle.textContent = "Add New User";
+        saveUserBtn.textContent = "Add User";
+        passwordField.required = true;
+        passwordHelp.style.display = "none";
         customModal.style.display = 'block';
     });
     
@@ -213,19 +226,28 @@ document.addEventListener('DOMContentLoaded', function() {
         implementFields.style.display = this.value === 'implement' ? 'block' : 'none';
     });
     
-    // Add user form submission
-    addUserButton.addEventListener('click', function() {
-        console.log("Add user button clicked");
+    // Reset form
+    function resetForm() {
+        document.getElementById('userForm').reset();
+        document.getElementById('originalUserId').value = '';
+        implementFields.style.display = 'none';
+    }
+    
+    // Save user (add or edit)
+    saveUserBtn.addEventListener('click', function() {
+        console.log("Save user button clicked");
         
+        const isEdit = editMode.value === "true";
+        const originalUserId = document.getElementById('originalUserId').value;
         const userId = document.getElementById('userId').value;
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         const role = roleSelect.value;
         
-        console.log("Form values:", { userId, username, role });
+        console.log("Form values:", { isEdit, originalUserId, userId, username, role });
         
         // Validate required fields
-        if (!userId || !username || !password || !role) {
+        if (!userId || !username || (!isEdit && !password) || !role) {
             alert('Please fill in all required fields');
             return;
         }
@@ -234,9 +256,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const userData = {
             userId: userId,
             username: username,
-            password: password,
             role: role
         };
+        
+        // Add password only if provided or in add mode
+        if (password) {
+            userData.password = password;
+        }
+        
+        // For edit mode, add original user ID
+        if (isEdit) {
+            userData.originalUserId = originalUserId;
+        }
         
         // Add implement-specific fields if role is implement
         if (role === 'implement') {
@@ -258,8 +289,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log("Sending user data:", userData);
         
+        // Determine endpoint based on mode
+        const endpoint = isEdit ? '/edit_user' : '/add_user';
+        
         // Send data to server
-        fetch('/add_user', {
+        fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -274,18 +308,52 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log("Response data:", data);
             if (data.success) {
                 customModal.style.display = 'none';
-                alert('User added successfully!');
+                alert(isEdit ? 'User updated successfully!' : 'User added successfully!');
                 location.reload();
             } else {
-                alert('Error: ' + (data.error || 'Failed to add user'));
+                alert('Error: ' + (data.error || `Failed to ${isEdit ? 'update' : 'add'} user`));
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('An error occurred while adding the user');
+            alert(`An error occurred while ${isEdit ? 'updating' : 'adding'} the user`);
         });
     });
 });
+
+// Function to open modal for editing a user
+function editUser(userId, username, role, implementId, vehicles) {
+    console.log("Edit user:", { userId, username, role, implementId, vehicles });
+    
+    // Set form to edit mode
+    document.getElementById('editMode').value = "true";
+    document.getElementById('originalUserId').value = userId;
+    document.getElementById('modalTitle').textContent = "Edit User";
+    document.getElementById('saveUserBtn').textContent = "Update User";
+    
+    // Fill form with user data
+    document.getElementById('userId').value = userId;
+    document.getElementById('username').value = username;
+    document.getElementById('password').value = '';
+    document.getElementById('password').required = false;
+    document.getElementById('passwordHelp').style.display = "block";
+    
+    // Set role and show/hide implement fields
+    const roleSelect = document.getElementById('role');
+    roleSelect.value = role.toLowerCase();
+    
+    const implementFields = document.getElementById('implementFields');
+    if (role.toLowerCase() === 'implement') {
+        implementFields.style.display = 'block';
+        document.getElementById('implementId').value = implementId;
+        document.getElementById('vehicles').value = vehicles;
+    } else {
+        implementFields.style.display = 'none';
+    }
+    
+    // Show modal
+    document.getElementById('customModal').style.display = 'block';
+}
 
 // Function to delete user
 function deleteUser(userId) {
