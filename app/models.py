@@ -7,4 +7,9 @@ class User(UserMixin):
         self.username = user_data['username']
         self.role = user_data['role']
         self.initials = ''.join(word[0] for word in user_data['username'].split())
-        self.userid = user_data['userId']
+        self.userId = user_data['userId']
+        if self.role == 'implement':
+            self.vehicles = user_data.get('vehicles', [])
+            self.implementId = user_data.get('implementId', '')
+            
+

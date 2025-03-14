@@ -221,41 +221,58 @@ def manage_users():
 
 @bp.route('/add_user', methods=['POST'])
 def add_user():
-    data = request.get_json()
-    user_id = data.get('userId')
-    username = data.get('username')
-    password = data.get('password')
-    role = data.get('role')
-
-    # Check if user already exists
-    existing_user = mongo.db.users.find_one({'userId': user_id})
-    if existing_user:
-        return jsonify({'success': False, 'error': 'User ID already exists'}), 400
-
-    # Create new user document
-    new_user = {
-        'userId': user_id,
-        'username': username,
-        'password': generate_password_hash(password),
-        'role': role
-    }
-
-    # Add implement-specific fields if role is implement
-    if role == 'implement':
-        implement_id = data.get('implementId')
-        vehicles = data.get('vehicles', [])
-        
-        if not implement_id:
-            return jsonify({'success': False, 'error': 'Implement ID is required'}), 400
-            
-        new_user['implementId'] = implement_id
-        new_user['vehicles'] = vehicles
-
     try:
+        data = request.get_json()
+        print("Received data:", data)  # Debug print
+        
+        # Validate required fields
+        required_fields = ['userId', 'username', 'password', 'role']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({
+                    'success': False,
+                    'error': f'{field} is required'
+                }), 400
+
+        # Check if user already exists
+        existing_user = mongo.db.users.find_one({'userId': data['userId']})
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'error': 'User ID already exists'
+            }), 400
+
+        # Create new user document
+        new_user = {
+            'userId': data['userId'],
+            'username': data['username'],
+            'password': generate_password_hash(data['password']),
+            'role': data['role']
+        }
+
+        # Add implement-specific fields if role is implement
+        if data['role'] == 'implement':
+            if not data.get('implementId'):
+                return jsonify({
+                    'success': False,
+                    'error': 'Implement ID is required for implement role'
+                }), 400
+            
+            new_user['implementId'] = data['implementId']
+            new_user['vehicles'] = data.get('vehicles', [])
+
+        # Insert the new user
         mongo.db.users.insert_one(new_user)
+        print("User added successfully:", new_user['userId'])  # Debug print
+
         return jsonify({'success': True}), 200
+
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print("Error adding user:", str(e))  # Debug print
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @bp.route('/delete_user', methods=['POST'])
 @login_required
