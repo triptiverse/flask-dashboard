@@ -4,6 +4,11 @@ from flask_login import LoginManager, current_user
 from bson.objectid import ObjectId
 from config import Config
 from app.utils import get_counts  # Import counts from utils
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize PyMongo instances for both databases
 mongo = PyMongo()  # For VehicleTracking database
@@ -18,9 +23,9 @@ def create_app(config_class=Config):
     
     # Configuration
     app.config.from_object(config_class)
-    app.config["MONGO_URI"] = "mongodb://localhost:27017/VehicleTracking"
-    app.config["DASHBOARD_MONGO_URI"] = "mongodb://localhost:27017/Dashboard"
-    app.config["SECRET_KEY"] = "your-secret-key"  # Change this to a secure key
+    app.config["MONGO_URI"] = os.getenv('VehicleTracking_URI')
+    app.config["DASHBOARD_MONGO_URI"] = os.getenv('MONGODB_URI')
+    app.config["SECRET_KEY"] = os.getenv('SECRET_KEY')
 
     # Initialize MongoDB connections
     mongo.init_app(app)

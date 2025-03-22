@@ -1,0 +1,7 @@
+runtime: python39
+entrypoint: gunicorn -b :$PORT app:app
+
+env_variables:
+  VehicleTracking_URI: "your_mongodb_uri"
+  MONGODB_URI: "your_dashboard_mongodb_uri"
+  SECRET_KEY: "your_secret_key"
